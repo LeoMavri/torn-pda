@@ -32,7 +32,9 @@ class FirestoreHelper {
   String? _uid;
   Future setUID(String userUID) async {
     _uid = userUID;
-    uidCompleter.complete();
+    if (!uidCompleter.isCompleted) {
+      uidCompleter.complete();
+    }
   }
 
   // Settings, when user initialized after API key validated
@@ -50,14 +52,9 @@ class FirestoreHelper {
             : "windows";
 
     // Generate or replace token if it already exists
-    // This avoids having multiple UIDs with a repeated token in case that the UID is artificially regenerated
-    String? token = "";
+    String token = "";
     if (!Platform.isWindows) {
-      final String currentToken = (await _messaging.getToken())!;
-      if (currentToken.isNotEmpty) {
-        await FirebaseMessaging.instance.deleteToken();
-      }
-      token = (await _messaging.getToken())!;
+      token = await _getMessagingToken();
     } else {
       token = "windows";
     }
@@ -380,5 +377,23 @@ class FirestoreHelper {
     await _firestore.collection("players").doc(_uid).update({
       "lootRangersNotification": subscribe,
     });
+  }
+
+  Future<String> _getMessagingToken() async {
+    // On iOS, ensure we have an APNS token before getting the FCM one
+    if (Platform.isIOS) {
+      await FirebaseMessaging.instance.getAPNSToken();
+    }
+
+    final String? currentToken = await _messaging.getToken().onError((error, stackTrace) {
+      log("TOKEN ERROR!");
+      return "error";
+    });
+
+    if (currentToken != null) {
+      Prefs().setFCMToken(currentToken);
+      return currentToken;
+    }
+    return "error";
   }
 }

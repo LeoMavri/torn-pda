@@ -28,12 +28,16 @@ import 'package:torn_pda/models/profile/own_profile_basic.dart';
 import 'package:torn_pda/pages/profile/shortcuts_page.dart';
 import 'package:torn_pda/pages/settings/alternative_keys_page.dart';
 import 'package:torn_pda/pages/settings/settings_browser.dart';
-import 'package:torn_pda/providers/api_caller.dart';
+import 'package:torn_pda/providers/api/api_caller.dart';
+import 'package:torn_pda/providers/api/api_utils.dart';
+import 'package:torn_pda/providers/api/api_v1_calls.dart';
 import 'package:torn_pda/providers/chain_status_provider.dart';
+import 'package:torn_pda/providers/sendbird_controller.dart';
 import 'package:torn_pda/providers/settings_provider.dart';
 import 'package:torn_pda/providers/shortcuts_provider.dart';
 import 'package:torn_pda/providers/spies_controller.dart';
 import 'package:torn_pda/providers/theme_provider.dart';
+import 'package:torn_pda/providers/user_controller.dart';
 import 'package:torn_pda/providers/user_details_provider.dart';
 import 'package:torn_pda/providers/webview_provider.dart';
 import 'package:torn_pda/torn-pda-native/auth/native_login_widget.dart';
@@ -1612,6 +1616,7 @@ class SettingsPageState extends State<SettingsPage> {
 
   Column _themeSection() {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1712,6 +1717,7 @@ class SettingsPageState extends State<SettingsPage> {
         ),
         if (_settingsProvider.syncTornWebTheme)
           Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Padding(
                 padding: const EdgeInsets.only(left: 20, right: 20),
@@ -1730,21 +1736,17 @@ class SettingsPageState extends State<SettingsPage> {
                   ],
                 ),
               ),
-              Row(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Text(
-                      "Specifies which of the two dark themes is activated in the app when the web or your device themes "
-                      "(depending on the options above) are switched to dark",
-                      style: TextStyle(
-                        color: Colors.grey[600],
-                        fontSize: 12,
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Text(
+                  "Specifies which of the two dark themes is activated in the app when the web or your device themes "
+                  "(depending on the options above) are switched to dark",
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 12,
+                    fontStyle: FontStyle.italic,
                   ),
-                ],
+                ),
               ),
             ],
           ),
@@ -1807,6 +1809,49 @@ class SettingsPageState extends State<SettingsPage> {
             children: [
               Text(
                 "Allows Torn PDA to change the main app icon based on certain conditions",
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 12,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+              if (!_settingsProvider.dynamicAppIconEnabledRemoteConfig)
+                Text(
+                  "Deactivated remotely for the time being",
+                  style: TextStyle(
+                    color: Colors.orange[600],
+                    fontSize: 12,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+            ],
+          ),
+        ),
+        if (!_settingsProvider.dynamicAppIconEnabledRemoteConfig ? false : _settingsProvider.dynamicAppIcons)
+          Padding(
+            padding: const EdgeInsets.only(left: 20, right: 20),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: <Widget>[
+                const Flexible(
+                  child: Text(
+                    "Override icon",
+                  ),
+                ),
+                Flexible(
+                  child: _manualAppIconDropdown(),
+                ),
+              ],
+            ),
+          ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "By using this option, you can manually trigger (some) app icons even if the conditions "
+                "are not met",
                 style: TextStyle(
                   color: Colors.grey[600],
                   fontSize: 12,
@@ -2501,7 +2546,7 @@ class SettingsPageState extends State<SettingsPage> {
                                     FocusScope.of(context).requestFocus(FocusNode());
                                     if (_formKey.currentState!.validate()) {
                                       _myCurrentKey = _apiKeyInputController.text.trim();
-                                      _getApiDetails(userTriggered: true, reload: true);
+                                      _getApiDetails(userTriggered: true);
                                     }
                                   },
                                 ),
@@ -2522,8 +2567,8 @@ class SettingsPageState extends State<SettingsPage> {
                                       _apiError = false;
                                     });
                                     if (!Platform.isWindows) await FirebaseMessaging.instance.deleteToken();
-                                    await FirestoreHelper().deleteUserProfile();
-                                    await firebaseAuth.signOut();
+                                    if (!Platform.isWindows) await FirestoreHelper().deleteUserProfile();
+                                    if (!Platform.isWindows) await firebaseAuth.signOut();
                                     widget.changeUID("");
                                   },
                                 ),
@@ -2844,6 +2889,71 @@ class SettingsPageState extends State<SettingsPage> {
               _webViewProvider.browserForegroundWithSplitTransition();
             }
           }
+        });
+      },
+    );
+  }
+
+  DropdownButton _manualAppIconDropdown() {
+    return DropdownButton<String>(
+      value: _settingsProvider.dynamicAppIconsManual,
+      items: const [
+        DropdownMenuItem(
+          value: "off",
+          child: SizedBox(
+            width: 120,
+            child: Text(
+              "Off",
+              textAlign: TextAlign.right,
+              style: TextStyle(fontSize: 14),
+            ),
+          ),
+        ),
+        DropdownMenuItem(
+          value: "awareness",
+          child: SizedBox(
+            width: 120,
+            child: Text(
+              "Awareness",
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ),
+        DropdownMenuItem(
+          value: "halloween",
+          child: SizedBox(
+            width: 120,
+            child: Text(
+              "Halloween",
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ),
+        DropdownMenuItem(
+          value: "christmas",
+          child: SizedBox(
+            width: 120,
+            child: Text(
+              "Christmas",
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ),
+      ],
+      onChanged: (value) {
+        if (value == null) return;
+        setState(() {
+          _settingsProvider.dynamicAppIconsManual = value;
+          _settingsProvider.appIconChangeBasedOnCondition();
         });
       },
     );
@@ -3567,13 +3677,13 @@ class SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Future<void> _getApiDetails({required bool userTriggered, bool reload = false}) async {
+  Future<void> _getApiDetails({required bool userTriggered}) async {
     try {
       setState(() {
         _apiIsLoading = true;
       });
 
-      final dynamic myProfile = await _apiController.getOwnProfileBasic(forcedApiKey: _myCurrentKey);
+      final dynamic myProfile = await ApiCallsV1.getOwnProfileBasic(forcedApiKey: _myCurrentKey);
       if (myProfile is OwnProfileBasic) {
         myProfile
           ..userApiKey = _myCurrentKey
@@ -3587,6 +3697,12 @@ class SettingsPageState extends State<SettingsPage> {
           _userProfile = myProfile;
         });
 
+        final uc = Get.find<UserController>();
+        if (uc.playerId == 0 && myProfile.playerId != null) {
+          uc.playerId = myProfile.playerId!;
+          uc.apiKey = myProfile.userApiKey;
+        }
+
         // Firestore uploading, but only if "Load" pressed by user
         if (userTriggered) {
           if (!Platform.isWindows) {
@@ -3595,7 +3711,7 @@ class SettingsPageState extends State<SettingsPage> {
             // Only sign in if there is currently no user registered (to avoid duplicates)
             if (user == null || (user is User && user.uid.isEmpty)) {
               final User mFirebaseUser = await (firebaseAuth.signInAnon());
-              FirestoreHelper().setUID(mFirebaseUser.uid);
+              await FirestoreHelper().setUID(mFirebaseUser.uid);
               // Returns UID to Drawer so that it can be passed to settings
               widget.changeUID(mFirebaseUser.uid);
               log("Settings: signed in with UID ${mFirebaseUser.uid}");
@@ -3607,6 +3723,12 @@ class SettingsPageState extends State<SettingsPage> {
             await FirestoreHelper().uploadLastActiveTime(DateTime.now().millisecondsSinceEpoch);
             if (Platform.isAndroid) {
               FirestoreHelper().setVibrationPattern(_vibrationValue);
+            }
+
+            // Sendbird notifications
+            final sbController = Get.find<SendbirdController>();
+            if (sbController.sendBirdNotificationsEnabled) {
+              sbController.register();
             }
           } else {
             log("Windows: skipping Firestore sign up!");

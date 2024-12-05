@@ -44,7 +44,7 @@ import 'package:torn_pda/pages/quick_items/quick_items_options.dart';
 import 'package:torn_pda/pages/trades/trades_options.dart';
 import 'package:torn_pda/pages/vault/vault_options_page.dart';
 import 'package:torn_pda/config/webview_config.dart';
-import 'package:torn_pda/providers/api_caller.dart';
+import 'package:torn_pda/providers/api/api_v1_calls.dart';
 import 'package:torn_pda/providers/chain_status_provider.dart';
 import 'package:torn_pda/providers/quick_items_faction_provider.dart';
 import 'package:torn_pda/providers/quick_items_provider.dart';
@@ -273,7 +273,7 @@ class WebViewFullState extends State<WebViewFull> with WidgetsBindingObserver {
   final List<String> _lastAttackedMembers = <String>[];
 
   UserDetailsProvider? _userProvider;
-  final UserController _u = Get.put(UserController());
+  final UserController _u = Get.find<UserController>();
   late TerminalProvider _terminalProvider;
 
   late WebViewProvider _webViewProvider;
@@ -305,7 +305,7 @@ class WebViewFullState extends State<WebViewFull> with WidgetsBindingObserver {
   final _findFocus = FocusNode();
   var _findFirstSubmitted = false;
   var _findPreviousText = "";
-  final _findInteractionController = null;
+  final _findInteractionController = Platform.isWindows ? null : FindInteractionController();
 
   bool _omitTabHistory = false;
 
@@ -651,11 +651,12 @@ class WebViewFullState extends State<WebViewFull> with WidgetsBindingObserver {
             IconButton(
               icon: const Icon(Icons.close),
               onPressed: () async {
+                if (_findInteractionController == null) return;
                 setState(() {
                   _findInPageActive = false;
                 });
                 _findController.text = "";
-                _findInteractionController.clearMatches();
+                _findInteractionController!.clearMatches();
                 _findFirstSubmitted = false;
               },
             ),
@@ -886,7 +887,7 @@ class WebViewFullState extends State<WebViewFull> with WidgetsBindingObserver {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    _travelHomeIcon(),
+                    if (!_settingsProvider.removeTravelQuickReturnButton) _travelHomeIcon(),
                     _crimesMenuIcon(),
                     _cityMenuIcon(),
                     _quickItemsMenuIcon(),
@@ -1163,7 +1164,7 @@ class WebViewFullState extends State<WebViewFull> with WidgetsBindingObserver {
           initialUrlRequest: _initialUrl,
           pullToRefreshController: _pullToRefreshController,
           findInteractionController: _findInteractionController,
-          webViewEnvironment: _webViewProvider.webViewEnvironment,  // Only assigned in Windows
+          webViewEnvironment: _webViewProvider.webViewEnvironment, // Only assigned in Windows
           initialSettings: _initialWebViewSettings,
           // EVENTS
           onWebViewCreated: (c) async {
@@ -1403,6 +1404,8 @@ class WebViewFullState extends State<WebViewFull> with WidgetsBindingObserver {
           onLoadStart: (c, uri) async {
             log("Start URL: $uri");
             //_loadTimeMill = DateTime.now().millisecondsSinceEpoch;
+
+            _webViewProvider.updateLastTabUse();
 
             _webViewProvider.verticalMenuClose();
             if (!mounted) return;
@@ -2013,7 +2016,7 @@ class WebViewFullState extends State<WebViewFull> with WidgetsBindingObserver {
     }
   }
 
-  /// Analysis of hit elements to change navigation behaviour
+  /// Analysis of hit elements to change navigation behavior
   Future<bool> _hitShouldOpenNewTab(
     InAppWebViewController c,
     NavigationAction request,
@@ -2317,6 +2320,8 @@ class WebViewFullState extends State<WebViewFull> with WidgetsBindingObserver {
           leading: IconButton(
             icon: const Icon(Icons.close, color: Colors.white),
             onPressed: () async {
+              if (_findInteractionController == null) return;
+
               setState(() {
                 _findInPageActive = false;
               });
@@ -2327,7 +2332,7 @@ class WebViewFullState extends State<WebViewFull> with WidgetsBindingObserver {
               }
 
               _findController.text = "";
-              _findInteractionController.clearMatches();
+              _findInteractionController!.clearMatches();
               _findFirstSubmitted = false;
             },
           ),
@@ -2546,7 +2551,7 @@ class WebViewFullState extends State<WebViewFull> with WidgetsBindingObserver {
             : <Widget>[
                 _crimesMenuIcon(),
                 _quickItemsMenuIcon(),
-                _travelHomeIcon(),
+                if (!_settingsProvider.removeTravelQuickReturnButton) _travelHomeIcon(),
                 _vaultsPopUpIcon(),
                 _tradesMenuIcon(),
                 _vaultOptionsIcon(),
@@ -3696,7 +3701,7 @@ class WebViewFullState extends State<WebViewFull> with WidgetsBindingObserver {
 
     // Pass items to widget (if nothing found, widget's list will be empty)
     try {
-      final dynamic apiResponse = await Get.find<ApiCallerController>().getItems();
+      final dynamic apiResponse = await ApiCallsV1.getItems();
       if (apiResponse is ItemsModel) {
         apiResponse.items!.forEach((key, value) {
           // Assign correct ids
@@ -4258,16 +4263,18 @@ class WebViewFullState extends State<WebViewFull> with WidgetsBindingObserver {
   }
 
   void _findAll() {
+    if (_findInteractionController == null) return;
     if (_findController.text.isNotEmpty) {
       setState(() {
         _findFirstSubmitted = true;
       });
-      _findInteractionController.findAll(find: _findController.text);
+      _findInteractionController!.findAll(find: _findController.text);
     }
   }
 
   void _findNext({required bool forward}) {
-    _findInteractionController.findNext(forward: forward);
+    if (_findInteractionController == null) return;
+    _findInteractionController!.findNext(forward: forward);
     if (_findFocus.hasFocus) _findFocus.unfocus();
   }
 
@@ -4291,7 +4298,7 @@ class WebViewFullState extends State<WebViewFull> with WidgetsBindingObserver {
 
     final easyUrl = targetUrl.replaceAll('#', '');
     if (easyUrl.contains('www.torn.com/gym.php') || easyUrl.contains('index.php?page=hunting')) {
-      final stats = await Get.find<ApiCallerController>().getBarsAndPlayerStatus();
+      final stats = await ApiCallsV1.getBarsAndPlayerStatus();
       if (stats is BarsStatusCooldownsModel) {
         var message = "";
         if (stats.chain!.current! > 10 && stats.chain!.cooldown == 0) {
@@ -4332,7 +4339,7 @@ class WebViewFullState extends State<WebViewFull> with WidgetsBindingObserver {
 
     final easyUrl = targetUrl.replaceAll('#', '');
     if (easyUrl.contains('www.torn.com/travelagency.php')) {
-      final stats = await Get.find<ApiCallerController>().getBarsAndPlayerStatus();
+      final stats = await ApiCallsV1.getBarsAndPlayerStatus();
       if (stats is! BarsStatusCooldownsModel) return;
 
       final List<Widget> warnRows = [];
@@ -5520,7 +5527,7 @@ class WebViewFullState extends State<WebViewFull> with WidgetsBindingObserver {
       // We'll skip maximum of 10 targets
       for (var i = 0; i < 10; i++) {
         // Get the status of our next target
-        final nextTarget = await Get.find<ApiCallerController>().getTarget(playerId: _chainingPayload!.attackIdList[i]);
+        final nextTarget = await ApiCallsV1.getTarget(playerId: _chainingPayload!.attackIdList[i]);
 
         if (nextTarget is TargetModel) {
           // If in hospital or jail (even in a different country), we skip
@@ -5532,8 +5539,7 @@ class WebViewFullState extends State<WebViewFull> with WidgetsBindingObserver {
           // If flying, we need to see if he is in a different country (if we are in the same
           // place, we can attack him)
           else if (nextTarget.status!.color == "blue") {
-            final user =
-                await Get.find<ApiCallerController>().getTarget(playerId: _userProvider!.basic!.playerId.toString());
+            final user = await ApiCallsV1.getTarget(playerId: _userProvider!.basic!.playerId.toString());
             if (user is TargetModel) {
               if (user.status!.description != nextTarget.status!.description) {
                 targetsSkipped++;
@@ -5621,7 +5627,7 @@ class WebViewFullState extends State<WebViewFull> with WidgetsBindingObserver {
     // This will show the note of the first target, if applicable
     if (_chainingPayload!.showNotes) {
       if (_chainingPayload!.showOnlineFactionWarning) {
-        final nextTarget = await Get.find<ApiCallerController>().getTarget(playerId: _chainingPayload!.attackIdList[0]);
+        final nextTarget = await ApiCallsV1.getTarget(playerId: _chainingPayload!.attackIdList[0]);
         if (nextTarget is TargetModel) {
           _factionName = nextTarget.faction!.factionName;
           _lastOnline = nextTarget.lastAction!.timestamp;
@@ -5658,8 +5664,7 @@ class WebViewFullState extends State<WebViewFull> with WidgetsBindingObserver {
       // We'll skip maximum of 8 targets
       for (var i = 0; i < 3; i++) {
         // Get the status of our next target
-        final nextTarget = await Get.find<ApiCallerController>()
-            .getTarget(playerId: _chainingPayload!.attackIdList[_attackNumber + 1]);
+        final nextTarget = await ApiCallsV1.getTarget(playerId: _chainingPayload!.attackIdList[_attackNumber + 1]);
 
         if (nextTarget is TargetModel) {
           // If in hospital or jail (even in a different country), we skip
@@ -5671,8 +5676,7 @@ class WebViewFullState extends State<WebViewFull> with WidgetsBindingObserver {
           // If flying, we need to see if he is in a different country (if we are in the same
           // place, we can attack him)
           else if (nextTarget.status!.color == "blue") {
-            final user =
-                await Get.find<ApiCallerController>().getTarget(playerId: _userProvider!.basic!.playerId.toString());
+            final user = await ApiCallsV1.getTarget(playerId: _userProvider!.basic!.playerId.toString());
             if (user is TargetModel) {
               if (user.status!.description != nextTarget.status!.description) {
                 targetsSkipped++;
@@ -5743,8 +5747,7 @@ class WebViewFullState extends State<WebViewFull> with WidgetsBindingObserver {
     // from the API
     else {
       if (_chainingPayload!.showOnlineFactionWarning) {
-        final nextTarget = await Get.find<ApiCallerController>()
-            .getTarget(playerId: _chainingPayload!.attackIdList[_attackNumber + 1]);
+        final nextTarget = await ApiCallsV1.getTarget(playerId: _chainingPayload!.attackIdList[_attackNumber + 1]);
 
         if (nextTarget is TargetModel) {
           _factionName = nextTarget.faction!.factionName;
